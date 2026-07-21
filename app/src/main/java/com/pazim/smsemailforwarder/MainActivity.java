@@ -1,4 +1,345 @@
 package com.pazim.smsemailforwarder;
-import android.Manifest; import android.app.*; import android.content.pm.PackageManager; import android.os.Bundle; import android.text.InputType; import android.view.*; import android.widget.*;
-public class MainActivity extends Activity { private EditText phone; private TextView history; public void onCreate(Bundle b){super.onCreate(b);int p=dp(20);ScrollView sv=new ScrollView(this);LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.VERTICAL);r.setPadding(p,p,p,p);sv.addView(r);TextView t=new TextView(this);t.setText("SMS Forwarder");t.setTextSize(27);r.addView(t);TextView w=new TextView(this);w.setText("Use only with the phone owner's clear consent. Messages may contain private information and security codes.");w.setPadding(0,dp(8),0,dp(12));r.addView(w);Switch em=new Switch(this);em.setText("Forward to email");em.setChecked(AppPrefs.email(this));em.setOnCheckedChangeListener((v,x)->AppPrefs.email(this,x));r.addView(em);Switch sm=new Switch(this);sm.setText("Forward by SMS");sm.setChecked(AppPrefs.sms(this));sm.setOnCheckedChangeListener((v,x)->AppPrefs.sms(this,x));r.addView(sm);phone=new EditText(this);phone.setHint("Destination phone, e.g. +14165551234");phone.setInputType(InputType.TYPE_CLASS_PHONE);phone.setText(AppPrefs.phone(this));r.addView(phone);Button save=b("Save settings");save.setOnClickListener(v->{AppPrefs.phone(this,phone.getText().toString());Toast.makeText(this,"Saved",Toast.LENGTH_SHORT).show();});r.addView(save);Button perm=b("Grant SMS permissions");perm.setOnClickListener(v->requestPermissions(new String[]{Manifest.permission.RECEIVE_SMS,Manifest.permission.SEND_SMS},10));r.addView(perm);Button te=b("Test email");te.setOnClickListener(v->{Forwarder.sendEmail(getApplicationContext(),"TEST","Android email test");later();});r.addView(te);Button ts=b("Test SMS");ts.setOnClickListener(v->{AppPrefs.phone(this,phone.getText().toString());if(checkSelfPermission(Manifest.permission.SEND_SMS)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.SEND_SMS},10);return;}Forwarder.sendSms(getApplicationContext(),"TEST","Android SMS test");later();});r.addView(ts);TextView ht=new TextView(this);ht.setText("Forwarding history");ht.setTextSize(21);ht.setPadding(0,dp(18),0,dp(5));r.addView(ht);Button refresh=b("Refresh history");refresh.setOnClickListener(v->refresh());r.addView(refresh);Button clear=b("Clear history");clear.setOnClickListener(v->{HistoryStore.clear(this);refresh();});r.addView(clear);history=new TextView(this);history.setTextIsSelectable(true);history.setPadding(0,dp(10),0,dp(30));r.addView(history);setContentView(sv);refresh();}
- protected void onResume(){super.onResume();refresh();} private void refresh(){if(history!=null)history.setText(HistoryStore.formatted(this));} private void later(){refresh();history.postDelayed(this::refresh,2000);history.postDelayed(this::refresh,6000);} private Button b(String s){Button b=new Button(this);b.setText(s);return b;}private int dp(int v){return(int)(v*getResources().getDisplayMetrics().density);} }
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.text.InputType;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.Switch;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class MainActivity extends Activity {
+
+    private static final int RECEIVE_SMS_REQUEST = 2001;
+    private static final int SEND_SMS_REQUEST = 2002;
+
+    private EditText phone;
+    private TextView history;
+
+    @Override
+    public void onCreate(Bundle bundle) {
+        super.onCreate(bundle);
+
+        int padding = dp(20);
+
+        ScrollView scrollView = new ScrollView(this);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(
+                padding,
+                padding,
+                padding,
+                padding
+        );
+
+        scrollView.addView(root);
+
+        TextView title = new TextView(this);
+        title.setText("SMS Forwarder");
+        title.setTextSize(27);
+        root.addView(title);
+
+        TextView warning = new TextView(this);
+        warning.setText(
+                "Use only with the phone owner's clear consent. " +
+                "Messages may contain private information and security codes."
+        );
+        warning.setPadding(
+                0,
+                dp(8),
+                0,
+                dp(12)
+        );
+        root.addView(warning);
+
+        Switch emailSwitch = new Switch(this);
+        emailSwitch.setText("Forward to email");
+        emailSwitch.setChecked(AppPrefs.email(this));
+        emailSwitch.setOnCheckedChangeListener(
+                (buttonView, checked) ->
+                        AppPrefs.email(this, checked)
+        );
+        root.addView(emailSwitch);
+
+        Switch smsSwitch = new Switch(this);
+        smsSwitch.setText("Forward by SMS");
+        smsSwitch.setChecked(AppPrefs.sms(this));
+        smsSwitch.setOnCheckedChangeListener(
+                (buttonView, checked) ->
+                        AppPrefs.sms(this, checked)
+        );
+        root.addView(smsSwitch);
+
+        phone = new EditText(this);
+        phone.setHint("Destination phone, e.g. +14165551234");
+        phone.setInputType(InputType.TYPE_CLASS_PHONE);
+        phone.setText(AppPrefs.phone(this));
+        root.addView(phone);
+
+        Button saveButton = createButton("Save settings");
+        saveButton.setOnClickListener(view -> {
+            AppPrefs.phone(
+                    this,
+                    phone.getText().toString().trim()
+            );
+
+            Toast.makeText(
+                    this,
+                    "Settings saved",
+                    Toast.LENGTH_SHORT
+            ).show();
+        });
+        root.addView(saveButton);
+
+        Button receivePermissionButton =
+                createButton("Allow receiving SMS");
+
+        receivePermissionButton.setOnClickListener(
+                view -> requestReceiveSmsPermission()
+        );
+
+        root.addView(receivePermissionButton);
+
+        Button sendPermissionButton =
+                createButton("Allow sending SMS");
+
+        sendPermissionButton.setOnClickListener(
+                view -> requestSendSmsPermission()
+        );
+
+        root.addView(sendPermissionButton);
+
+        Button testEmailButton =
+                createButton("Test email");
+
+        testEmailButton.setOnClickListener(view -> {
+            Forwarder.sendEmail(
+                    getApplicationContext(),
+                    "TEST",
+                    "Android email test"
+            );
+
+            refreshLater();
+        });
+
+        root.addView(testEmailButton);
+
+        Button testSmsButton =
+                createButton("Test SMS");
+
+        testSmsButton.setOnClickListener(view -> {
+            AppPrefs.phone(
+                    this,
+                    phone.getText().toString().trim()
+            );
+
+            if (checkSelfPermission(Manifest.permission.SEND_SMS)
+                    != PackageManager.PERMISSION_GRANTED) {
+
+                requestSendSmsPermission();
+                return;
+            }
+
+            String destination = phone
+                    .getText()
+                    .toString()
+                    .trim();
+
+            if (destination.isEmpty()) {
+                Toast.makeText(
+                        this,
+                        "Enter a destination phone number",
+                        Toast.LENGTH_LONG
+                ).show();
+                return;
+            }
+
+            Forwarder.sendSms(
+                    getApplicationContext(),
+                    "TEST",
+                    "Android SMS test"
+            );
+
+            refreshLater();
+        });
+
+        root.addView(testSmsButton);
+
+        TextView historyTitle = new TextView(this);
+        historyTitle.setText("Forwarding history");
+        historyTitle.setTextSize(21);
+        historyTitle.setPadding(
+                0,
+                dp(18),
+                0,
+                dp(5)
+        );
+        root.addView(historyTitle);
+
+        Button refreshButton =
+                createButton("Refresh history");
+
+        refreshButton.setOnClickListener(
+                view -> refreshHistory()
+        );
+
+        root.addView(refreshButton);
+
+        Button clearButton =
+                createButton("Clear history");
+
+        clearButton.setOnClickListener(view -> {
+            HistoryStore.clear(this);
+            refreshHistory();
+        });
+
+        root.addView(clearButton);
+
+        history = new TextView(this);
+        history.setTextIsSelectable(true);
+        history.setPadding(
+                0,
+                dp(10),
+                0,
+                dp(30)
+        );
+
+        root.addView(history);
+
+        setContentView(scrollView);
+
+        refreshHistory();
+    }
+
+    private void requestReceiveSmsPermission() {
+        if (checkSelfPermission(Manifest.permission.RECEIVE_SMS)
+                == PackageManager.PERMISSION_GRANTED) {
+
+            Toast.makeText(
+                    this,
+                    "Receive SMS permission already granted",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+        requestPermissions(
+                new String[]{
+                        Manifest.permission.RECEIVE_SMS
+                },
+                RECEIVE_SMS_REQUEST
+        );
+    }
+
+    private void requestSendSmsPermission() {
+        if (checkSelfPermission(Manifest.permission.SEND_SMS)
+                == PackageManager.PERMISSION_GRANTED) {
+
+            Toast.makeText(
+                    this,
+                    "Send SMS permission already granted",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+        requestPermissions(
+                new String[]{
+                        Manifest.permission.SEND_SMS
+                },
+                SEND_SMS_REQUEST
+        );
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            String[] permissions,
+            int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        boolean granted =
+                grantResults.length > 0
+                        && grantResults[0]
+                        == PackageManager.PERMISSION_GRANTED;
+
+        if (requestCode == RECEIVE_SMS_REQUEST) {
+            Toast.makeText(
+                    this,
+                    granted
+                            ? "Receive SMS permission granted"
+                            : "Receive SMS permission denied",
+                    Toast.LENGTH_LONG
+            ).show();
+        }
+
+        if (requestCode == SEND_SMS_REQUEST) {
+            Toast.makeText(
+                    this,
+                    granted
+                            ? "Send SMS permission granted"
+                            : "Send SMS permission denied",
+                    Toast.LENGTH_LONG
+            ).show();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshHistory();
+    }
+
+    private void refreshHistory() {
+        if (history != null) {
+            history.setText(
+                    HistoryStore.formatted(this)
+            );
+        }
+    }
+
+    private void refreshLater() {
+        refreshHistory();
+
+        if (history != null) {
+            history.postDelayed(
+                    this::refreshHistory,
+                    2000
+            );
+
+            history.postDelayed(
+                    this::refreshHistory,
+                    6000
+            );
+        }
+    }
+
+    private Button createButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        return button;
+    }
+
+    private int dp(int value) {
+        return (int) (
+                value
+                        * getResources()
+                        .getDisplayMetrics()
+                        .density
+        );
+    }
+}
