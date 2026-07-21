@@ -1,0 +1,3 @@
+package com.pazim.smsemailforwarder;
+import android.content.*;
+public final class AppPrefs { private static final String F="prefs"; private AppPrefs(){} private static SharedPreferences p(Context c){return c.getSharedPreferences(F,0);} public static boolean email(Context c){return p(c).getBoolean("email",true);} public static void email(Context c,boolean v){p(c).edit().putBoolean("email",v).apply();} public static boolean sms(Context c){return p(c).getBoolean("sms",false);} public static void sms(Context c,boolean v){p(c).edit().putBoolean("sms",v).apply();} public static String phone(Context c){return p(c).getString("phone","");} public static void phone(Context c,String v){p(c).edit().putString("phone",v.trim()).apply();} }

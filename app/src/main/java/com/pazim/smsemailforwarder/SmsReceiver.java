@@ -1,0 +1,3 @@
+package com.pazim.smsemailforwarder;
+import android.content.*; import android.provider.Telephony; import android.telephony.SmsMessage;
+public class SmsReceiver extends BroadcastReceiver { public void onReceive(Context c,Intent i){if(!Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(i.getAction()))return;SmsMessage[] ms=Telephony.Sms.Intents.getMessagesFromIntent(i);String sender="Unknown";StringBuilder body=new StringBuilder();for(SmsMessage m:ms){if(m.getDisplayOriginatingAddress()!=null)sender=m.getDisplayOriginatingAddress();if(m.getDisplayMessageBody()!=null)body.append(m.getDisplayMessageBody());}Forwarder.forward(c.getApplicationContext(),sender,body.toString());}}
