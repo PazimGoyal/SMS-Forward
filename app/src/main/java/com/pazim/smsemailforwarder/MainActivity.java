@@ -5,7 +5,6 @@ import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.text.InputType;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -20,6 +19,10 @@ public class MainActivity extends Activity {
     private static final int SEND_SMS_REQUEST = 2002;
 
     private EditText phone;
+    private EditText senderEmail;
+    private EditText emailPassword;
+    private EditText destinationEmail;
+
     private TextView history;
 
     @Override
@@ -49,7 +52,7 @@ public class MainActivity extends Activity {
         TextView warning = new TextView(this);
         warning.setText(
                 "Use only with the phone owner's clear consent. " +
-                "Messages may contain private information and security codes."
+                "Use a Gmail app password, not the normal Gmail password."
         );
         warning.setPadding(
                 0,
@@ -61,16 +64,57 @@ public class MainActivity extends Activity {
 
         Switch emailSwitch = new Switch(this);
         emailSwitch.setText("Forward to email");
-        emailSwitch.setChecked(AppPrefs.email(this));
+        emailSwitch.setChecked(
+                AppPrefs.email(this)
+        );
         emailSwitch.setOnCheckedChangeListener(
                 (buttonView, checked) ->
                         AppPrefs.email(this, checked)
         );
         root.addView(emailSwitch);
 
+        senderEmail = new EditText(this);
+        senderEmail.setHint("Sender Gmail address");
+        senderEmail.setInputType(
+                InputType.TYPE_CLASS_TEXT
+                        | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        );
+        senderEmail.setText(
+                AppPrefs.emailUsername(this)
+        );
+        root.addView(senderEmail);
+
+        emailPassword = new EditText(this);
+        emailPassword.setHint(
+                "16-character Gmail app password"
+        );
+        emailPassword.setInputType(
+                InputType.TYPE_CLASS_TEXT
+                        | InputType.TYPE_TEXT_VARIATION_PASSWORD
+        );
+        emailPassword.setText(
+                AppPrefs.emailPassword(this)
+        );
+        root.addView(emailPassword);
+
+        destinationEmail = new EditText(this);
+        destinationEmail.setHint(
+                "Destination email address"
+        );
+        destinationEmail.setInputType(
+                InputType.TYPE_CLASS_TEXT
+                        | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+        );
+        destinationEmail.setText(
+                AppPrefs.destinationEmail(this)
+        );
+        root.addView(destinationEmail);
+
         Switch smsSwitch = new Switch(this);
         smsSwitch.setText("Forward by SMS");
-        smsSwitch.setChecked(AppPrefs.sms(this));
+        smsSwitch.setChecked(
+                AppPrefs.sms(this)
+        );
         smsSwitch.setOnCheckedChangeListener(
                 (buttonView, checked) ->
                         AppPrefs.sms(this, checked)
@@ -78,24 +122,24 @@ public class MainActivity extends Activity {
         root.addView(smsSwitch);
 
         phone = new EditText(this);
-        phone.setHint("Destination phone, e.g. +14165551234");
-        phone.setInputType(InputType.TYPE_CLASS_PHONE);
-        phone.setText(AppPrefs.phone(this));
+        phone.setHint(
+                "Destination phone, e.g. +14165551234"
+        );
+        phone.setInputType(
+                InputType.TYPE_CLASS_PHONE
+        );
+        phone.setText(
+                AppPrefs.phone(this)
+        );
         root.addView(phone);
 
-        Button saveButton = createButton("Save settings");
-        saveButton.setOnClickListener(view -> {
-            AppPrefs.phone(
-                    this,
-                    phone.getText().toString().trim()
-            );
+        Button saveButton =
+                createButton("Save settings");
 
-            Toast.makeText(
-                    this,
-                    "Settings saved",
-                    Toast.LENGTH_SHORT
-            ).show();
-        });
+        saveButton.setOnClickListener(view ->
+                saveSettings()
+        );
+
         root.addView(saveButton);
 
         Button receivePermissionButton =
@@ -120,10 +164,12 @@ public class MainActivity extends Activity {
                 createButton("Test email");
 
         testEmailButton.setOnClickListener(view -> {
+            saveSettings();
+
             Forwarder.sendEmail(
                     getApplicationContext(),
                     "TEST",
-                    "Android email test"
+                    "Android direct SMTP email test"
             );
 
             refreshLater();
@@ -135,29 +181,27 @@ public class MainActivity extends Activity {
                 createButton("Test SMS");
 
         testSmsButton.setOnClickListener(view -> {
-            AppPrefs.phone(
-                    this,
-                    phone.getText().toString().trim()
-            );
+            saveSettings();
 
-            if (checkSelfPermission(Manifest.permission.SEND_SMS)
-                    != PackageManager.PERMISSION_GRANTED) {
+            if (checkSelfPermission(
+                    Manifest.permission.SEND_SMS
+            ) != PackageManager.PERMISSION_GRANTED) {
 
                 requestSendSmsPermission();
                 return;
             }
 
-            String destination = phone
-                    .getText()
+            if (phone.getText()
                     .toString()
-                    .trim();
+                    .trim()
+                    .isEmpty()) {
 
-            if (destination.isEmpty()) {
                 Toast.makeText(
                         this,
                         "Enter a destination phone number",
                         Toast.LENGTH_LONG
                 ).show();
+
                 return;
             }
 
@@ -172,15 +216,22 @@ public class MainActivity extends Activity {
 
         root.addView(testSmsButton);
 
-        TextView historyTitle = new TextView(this);
-        historyTitle.setText("Forwarding history");
+        TextView historyTitle =
+                new TextView(this);
+
+        historyTitle.setText(
+                "Forwarding history"
+        );
+
         historyTitle.setTextSize(21);
+
         historyTitle.setPadding(
                 0,
                 dp(18),
                 0,
                 dp(5)
         );
+
         root.addView(historyTitle);
 
         Button refreshButton =
@@ -218,9 +269,45 @@ public class MainActivity extends Activity {
         refreshHistory();
     }
 
+    private void saveSettings() {
+        AppPrefs.emailUsername(
+                this,
+                senderEmail.getText()
+                        .toString()
+                        .trim()
+        );
+
+        AppPrefs.emailPassword(
+                this,
+                emailPassword.getText()
+                        .toString()
+        );
+
+        AppPrefs.destinationEmail(
+                this,
+                destinationEmail.getText()
+                        .toString()
+                        .trim()
+        );
+
+        AppPrefs.phone(
+                this,
+                phone.getText()
+                        .toString()
+                        .trim()
+        );
+
+        Toast.makeText(
+                this,
+                "Settings saved",
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
     private void requestReceiveSmsPermission() {
-        if (checkSelfPermission(Manifest.permission.RECEIVE_SMS)
-                == PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(
+                Manifest.permission.RECEIVE_SMS
+        ) == PackageManager.PERMISSION_GRANTED) {
 
             Toast.makeText(
                     this,
@@ -240,8 +327,9 @@ public class MainActivity extends Activity {
     }
 
     private void requestSendSmsPermission() {
-        if (checkSelfPermission(Manifest.permission.SEND_SMS)
-                == PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(
+                Manifest.permission.SEND_SMS
+        ) == PackageManager.PERMISSION_GRANTED) {
 
             Toast.makeText(
                     this,
