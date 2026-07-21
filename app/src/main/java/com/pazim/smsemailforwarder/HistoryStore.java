@@ -1,16 +1,206 @@
 package com.pazim.smsemailforwarder;
-import android.content.*; import org.json.*; import java.text.*; import java.util.*;
-public final class HistoryStore { private static final String F="history",K="items"; private HistoryStore(){}
- private static JSONArray a(Context c){try{return new JSONArray(c.getSharedPreferences(F,0).getString(K,"[]"));}catch(Exception e){return new JSONArray();}}
- private static void s(Context c,JSONArray a){c.getSharedPreferences(F,0).edit().putString(K,a.toString()).apply();}
- public static synchronized String add(Context c,String channel,String dest,String sender,String msg,String status,String detail){String id=UUID.randomUUID().toString();try{JSONArray old=a(c),n=new JSONArray();JSONObject o=new JSONObject();o.put("id",id);o.put("time",System.currentTimeMillis());o.put("channel",channel);o.put("dest",dest);o.put("sender",sender);o.put("msg",msg);o.put("status",status);o.put("detail",detail);n.put(o);for(int i=0;i<old.length()&&n.length()<100;i++)n.put(old.get(i));s(c,n);}catch(Exception ignored){}return id;}
- public static synchronized void update(Context c,String id,String status,String detail){try{JSONArray x=a(c);for(int i=0;i<x.length();i++){JSONObject o=x.getJSONObject(i);if(id.equals(o.optString("id"))){o.put("status",status);o.put("detail",detail);break;}}s(c,x);}catch(Exception ignored){}}
- public static synchronized String text(Context c){JSONArray x=a(c);if(x.length()==0)return "No forwarding attempts yet.";StringBuilder b=new StringBuilder();SimpleDateFormat f=new SimpleDateFormat("MMM d, h:mm:ss a",Locale.getDefault());for(int i=0;i<x.length();i++){JSONObject o=x.optJSONObject(i);if(o==null)continue;String m=o.optString("msg","");if(m.length()>180)m=m.substring(0,180)+"…";b.append(o.optString("channel")).append(" • ").append(o.optString("status")).append("
-").append(f.format(new Date(o.optLong("time")))).append(" • From: ").append(o.optString("sender")).append("
-To: ").append(o.optString("dest")).append("
-").append(m);String d=o.optString("detail","");if(!d.isEmpty())b.append("
-").append(d);b.append("
 
-");}return b.toString().trim();}
- public static void clear(Context c){c.getSharedPreferences(F,0).edit().remove(K).apply();}
+import android.content.Context;
+import android.content.SharedPreferences;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.UUID;
+
+public final class HistoryStore {
+
+    private static final String FILE_NAME = "forward_history";
+    private static final String KEY_ITEMS = "items";
+    private static final int MAX_ITEMS = 100;
+
+    private HistoryStore() {
+    }
+
+    public static synchronized String add(
+            Context context,
+            String channel,
+            String destination,
+            String sender,
+            String message,
+            String status,
+            String detail
+    ) {
+        String id = UUID.randomUUID().toString();
+
+        try {
+            JSONArray oldItems = readArray(context);
+            JSONArray newItems = new JSONArray();
+
+            JSONObject item = new JSONObject();
+            item.put("id", id);
+            item.put("time", System.currentTimeMillis());
+            item.put("channel", channel);
+            item.put("destination", destination);
+            item.put("sender", sender);
+            item.put("message", message);
+            item.put("status", status);
+            item.put("detail", detail);
+
+            newItems.put(item);
+
+            for (
+                    int i = 0;
+                    i < oldItems.length() && newItems.length() < MAX_ITEMS;
+                    i++
+            ) {
+                newItems.put(oldItems.get(i));
+            }
+
+            saveArray(context, newItems);
+
+        } catch (Exception ignored) {
+        }
+
+        return id;
+    }
+
+    public static synchronized void updateStatus(
+            Context context,
+            String id,
+            String status,
+            String detail
+    ) {
+        try {
+            JSONArray items = readArray(context);
+
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.getJSONObject(i);
+
+                if (id.equals(item.optString("id"))) {
+                    item.put("status", status);
+                    item.put("detail", detail);
+                    break;
+                }
+            }
+
+            saveArray(context, items);
+
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static synchronized String formatted(Context context) {
+        JSONArray items = readArray(context);
+
+        if (items.length() == 0) {
+            return "No forwarding attempts yet.";
+        }
+
+        StringBuilder output = new StringBuilder();
+
+        SimpleDateFormat dateFormat = new SimpleDateFormat(
+                "MMM d, h:mm:ss a",
+                Locale.getDefault()
+        );
+
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.optJSONObject(i);
+
+            if (item == null) {
+                continue;
+            }
+
+            output.append(item.optString("channel", "?"))
+                    .append(" • ")
+                    .append(item.optString("status", "?"))
+                    .append("\n");
+
+            output.append(
+                    dateFormat.format(
+                            new Date(item.optLong("time"))
+                    )
+            );
+
+            output.append(" • From: ")
+                    .append(item.optString("sender", "Unknown"))
+                    .append("\n");
+
+            output.append("To: ")
+                    .append(item.optString(
+                            "destination",
+                            "Not configured"
+                    ))
+                    .append("\n");
+
+            output.append(
+                    shorten(
+                            item.optString("message", ""),
+                            180
+                    )
+            );
+
+            String detail = item.optString("detail", "");
+
+            if (!detail.isEmpty()) {
+                output.append("\n").append(detail);
+            }
+
+            output.append("\n\n");
+        }
+
+        return output.toString().trim();
+    }
+
+    public static synchronized void clear(Context context) {
+        context.getSharedPreferences(
+                FILE_NAME,
+                Context.MODE_PRIVATE
+        )
+                .edit()
+                .remove(KEY_ITEMS)
+                .apply();
+    }
+
+    private static JSONArray readArray(Context context) {
+        SharedPreferences preferences =
+                context.getSharedPreferences(
+                        FILE_NAME,
+                        Context.MODE_PRIVATE
+                );
+
+        String json = preferences.getString(KEY_ITEMS, "[]");
+
+        try {
+            return new JSONArray(json);
+        } catch (Exception exception) {
+            return new JSONArray();
+        }
+    }
+
+    private static void saveArray(
+            Context context,
+            JSONArray array
+    ) {
+        context.getSharedPreferences(
+                FILE_NAME,
+                Context.MODE_PRIVATE
+        )
+                .edit()
+                .putString(KEY_ITEMS, array.toString())
+                .apply();
+    }
+
+    private static String shorten(
+            String value,
+            int maximumLength
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        if (value.length() <= maximumLength) {
+            return value;
+        }
+
+        return value.substring(0, maximumLength) + "…";
+    }
 }
